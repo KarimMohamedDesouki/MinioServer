@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MinIO File Upload & Download</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        .container {
+            max-width: 500px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+        h2 {
+            color: #333;
+        }
+        input, button {
+            width: 90%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        input {
+            display: block;
+        }
+        button {
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        #fileDisplay {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Upload File to MinIO</h2>
+        <input type="file" id="fileInput">
+        <button id="uploadButton">Upload File</button>
+        <p id="uploadMessage"></p>
+
+        <h2>Download File from MinIO</h2>
+        <input type="text" id="fileIdInput" placeholder="Enter file UUID">
+        <button id="downloadButton">Download File</button>
+        <div id="fileDisplay"></div>
+        <p id="errorMessage" class="error"></p>
+    </div>
+
+    <script>
+        document.getElementById('uploadButton').addEventListener('click', function() {
+            const fileInput = document.getElementById('fileInput').files[0];
+            if (!fileInput) {
+                alert("Please select a file to upload.");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", fileInput);
+
+            fetch("http://localhost:8080/minio/upload", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw new Error(err.message); });
+                }
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById('uploadMessage').textContent = `File uploaded! UUID: ${data.referenceNumber}`;
+            })
+            .catch(error => {
+                console.error("Upload error:", error);
+                document.getElementById('uploadMessage').textContent = `Error: ${error.message}`;
+            });
+        });
+
+        document.getElementById('downloadButton').addEventListener('click', function() {
+            const fileId = document.getElementById('fileIdInput').value.trim();
+            if (!fileId) {
+                alert('Please enter a file UUID');
+                return;
+            }
+
+            fetch(`http://localhost:8080/minio/download/${fileId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(text); });
+                    }
+
+                    const contentDisposition = response.headers.get("Content-Disposition");
+                    let fileName = "downloaded_file";
+
+                    if (contentDisposition) {
+                        const match = contentDisposition.match(/filename\*=UTF-8''(.+)/);
+                        if (match && match[1]) {
+                            fileName = decodeURIComponent(match[1]);
+                        }
+                    }
+
+                    return response.blob().then(blob => ({ blob, fileName }));
+                })
+                .then(({ blob, fileName }) => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = fileName;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                })
+                .catch(error => {
+                    console.error('File download error:', error.message);
+                    document.getElementById('errorMessage').textContent = `Error: ${error.message}`;
+                });
+        });
+    </script>
+</body>
+</html>
